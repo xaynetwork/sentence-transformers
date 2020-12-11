@@ -120,7 +120,8 @@ def semantic_search(query_embeddings: Tensor,
                       corpus_embeddings: Tensor,
                       query_chunk_size: int = 100,
                       corpus_chunk_size: int = 100000,
-                      top_k: int = 10):
+                      embedding_size: int = 768,
+                      top_k: int = 20):
     """
     This function performs a cosine similarity search between a list of query embeddings  and a list of corpus embeddings.
     It can be used for Information Retrieval / Semantic Search for corpora up to about 1 Million entries.
@@ -129,7 +130,8 @@ def semantic_search(query_embeddings: Tensor,
     :param corpus_embeddings: A 2 dimensional tensor with the corpus embeddings.
     :param query_chunk_size: Process 100 queries simultaneously. Increasing that value increases the speed, but requires more memory.
     :param corpus_chunk_size: Scans the corpus 100k entries at a time. Increasing that value increases the speed, but requires more memory.
-    :param top_k: Retrieve top k matching entries.
+    :param embedding_size: Size of the embedding vector 
+    :param top_k: Retrieve top k matching entries. Note, if your corpus is larger than query_chunk_size, |Chunks|*top_k are returned
     :return: Returns a sorted list with decreasing cosine similarity scores. Entries are dictionaries with the keys 'corpus_id' and 'score'
     """
 
@@ -146,14 +148,17 @@ def semantic_search(query_embeddings: Tensor,
     elif isinstance(corpus_embeddings, list):
         corpus_embeddings = torch.stack(corpus_embeddings)
 
+    
+    query_embeddings_norm = query_embeddings.norm(dim=1)
+    corpus_embeddings_norm = corpus_embeddings.norm(dim=1)[:, None]
+
     #Normalize scores, so that the dot-product is equivalent to cosine similarity
     query_embeddings = query_embeddings / query_embeddings.norm(dim=1)[:, None]
     corpus_embeddings = corpus_embeddings / corpus_embeddings.norm(dim=1)[:, None]
 
-    if corpus_embeddings.device != query_embeddings.device:
-        corpus_embeddings = corpus_embeddings.to(query_embeddings.device)
-
     queries_result_list = [[] for _ in range(len(query_embeddings))]
+    queries_result_list1 = [[] for _ in range(len(query_embeddings))]
+    
 
     for query_start_idx in range(0, len(query_embeddings), query_chunk_size):
         query_end_idx = min(query_start_idx + query_chunk_size, len(query_embeddings))
@@ -166,6 +171,15 @@ def semantic_search(query_embeddings: Tensor,
             cos_scores = torch.mm(query_embeddings[query_start_idx:query_end_idx], corpus_embeddings[corpus_start_idx:corpus_end_idx].transpose(0, 1)).cpu().numpy()
             cos_scores = np.nan_to_num(cos_scores)
 
+            # Euclidean_dist = []
+            # Euclidean_dist_norm = []
+            # # compute Euclidean Distances
+            # for idx in range(corpus_chunk_size):
+            #     Euclidean_dist.append(np.linalg.norm(query_embeddings[query_start_idx:query_end_idx].cpu().numpy() * query_embeddings_norm.numpy() - torch.reshape(corpus_embeddings[corpus_start_idx+idx,:],(1,embedding_size)).cpu().numpy() * corpus_embeddings_norm[corpus_start_idx+idx].numpy()))
+
+            # for idx in range(corpus_chunk_size):
+            #     Euclidean_dist_norm.append(np.linalg.norm(query_embeddings[query_start_idx:query_end_idx].cpu().numpy() - torch.reshape(corpus_embeddings[corpus_start_idx+idx,:],(1,embedding_size)).cpu().numpy() ))
+
             # Partial sort scores
             cos_score_argpartition = np.argpartition(-cos_scores, min(top_k, len(cos_scores[0])-1))[:, 0:top_k]
 
@@ -174,14 +188,24 @@ def semantic_search(query_embeddings: Tensor,
                     corpus_id = corpus_start_idx + sub_corpus_id
                     query_id = query_start_idx + query_itr
                     score = cos_scores[query_itr][sub_corpus_id]
+                    # Euclidean_dist_score = Euclidean_dist[sub_corpus_id]
+                    # Euclidean_dist_score_norm = Euclidean_dist_norm[sub_corpus_id]
+                    # queries_result_list[query_id].append({'corpus_id': corpus_id, 'score': score, 'Euclidean_distance': Euclidean_dist_score, 'Euclidean_distance_norm': Euclidean_dist_norm})
+                    # queries_result_list1[query_id].append({'corpus_id': corpus_id, 'score': score, 'Euclidean_distance': Euclidean_dist_score, 'Euclidean_distance_norm': Euclidean_dist_norm})
                     queries_result_list[query_id].append({'corpus_id': corpus_id, 'score': score})
+                    queries_result_list1[query_id].append({'corpus_id': corpus_id, 'score': score})
 
+    
     #Sort and strip to top_k results
     for idx in range(len(queries_result_list)):
         queries_result_list[idx] = sorted(queries_result_list[idx], key=lambda x: x['score'], reverse=True)
         queries_result_list[idx] = queries_result_list[idx][0:top_k]
+    
+    # for idx in range(len(queries_result_list1)):
+    #     queries_result_list1[idx] = sorted(queries_result_list1[idx], key=lambda x: x['Euclidean_distance'], reverse=False)
+    #     queries_result_list1[idx] = queries_result_list1[idx][0:top_k]
 
-    return queries_result_list
+    return queries_result_list#, queries_result_list1
 
 
 def http_get(url, path):
