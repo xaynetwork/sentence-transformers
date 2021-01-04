@@ -17,13 +17,14 @@ import time
 import gzip
 import os
 
+
 #We use the Bi-Encoder to encode all passages, so that we can use it with sematic search
-bi_encoder = SentenceTransformer('distilroberta-base-msmarco-v2')
+bi_encoder = SentenceTransformer('/home/ubuntu/sentence-transformers/examples/training/multilingual/output/make-multilingual-base-teacher-0_BERTen-ar-bg-cs-de-el-en-es-fi-fr-hr-hu-it-nl-pl-pt-ro-ru-sr-sv-tr-2020-11-21_10-39-25/student/')
 top_k = 100     #Number of passages we want to retrieve with the bi-encoder
 
 #The bi-encoder will retrieve 100 documents. We use a cross-encoder, to re-rank the results list to improve the quality
+# cross_encoder = CrossEncoder('/home/ubuntu/sentence-transformers/examples/training/multilingual/output/make-multilingual-base-teacher-0_BERTen-ar-bg-cs-de-el-en-es-fi-fr-hr-hu-it-nl-pl-pt-ro-ru-sr-sv-tr-2020-11-21_10-39-25/student')
 cross_encoder = CrossEncoder('sentence-transformers/ce-ms-marco-TinyBERT-L-6')
-
 # As dataset, we use Simple English Wikipedia. Compared to the full English wikipedia, it has only
 # about 170k articles. We split these articles into paragraphs and encode them with the bi-encoder
 
@@ -42,8 +43,8 @@ with gzip.open(wikipedia_filepath, 'rt', encoding='utf8') as fIn:
                 passages.append(p.strip()[0:5000])
 
 #If you like, you can also limit the number of passages you want to use
-passages = passages[0:500]
-print("Passages:", len(passages))
+# passages = passages[0:50000]
+# print("Passages:", len(passages))
 
 #Now we encode all passages we have in our Simple Wikipedia corpus
 corpus_embeddings = bi_encoder.encode(passages, show_progress_bar=True)
@@ -60,20 +61,20 @@ while True:
 
     #Now, score all retrieved passages with the cross_encoder
     cross_inp = [[query, passages[hit['corpus_id']]] for hit in hits]
+    
     cross_scores = cross_encoder.predict(cross_inp)
-    print("cross_scores",cross_scores )
+
     #Sort results by the cross-encoder scores
     for idx in range(len(cross_scores)):
         hits[idx]['cross-score'] = cross_scores[idx]
 
-    # hits = sorted(hits, key=lambda x: x['cross-score'], reverse=True)
     end_time = time.time()
 
     #Output of top-5 hits
     print("Input question:", query)
     print("Results (after {:.3f} seconds):".format(end_time - start_time))
     for hit in hits[0:5]:
-        print("\t{:.3f}\t{}".format(hit['cross-score'], passages[hit['corpus_id']]))
+        print("\t{:.3f}\t{:.3f}\t{}".format(hit['cross-score'], hit['score'], passages[hit['corpus_id']]))
 
     print("\n\n========\n")
 

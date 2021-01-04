@@ -26,10 +26,10 @@ corpus = ['A man is eating food.',
 
 # So we create the respective sentence combinations
 sentence_combinations = [[query, corpus_sentence] for corpus_sentence in corpus]
-
+print(sentence_combinations)
 # Compute the similarity scores for these combinations
 similarity_scores = model.predict(sentence_combinations)
-
+print(similarity_scores)
 # Sort the scores in decreasing order
 sim_scores_argsort = reversed(np.argsort(similarity_scores))
 
